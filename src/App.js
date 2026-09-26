@@ -43,8 +43,14 @@ function App() {
   const [form, setForm] = useState(emptyForm);
 
   const [leads, setLeads] = useState(() => {
-    const saved = localStorage.getItem("mc_leads");
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem("mc_leads");
+      const parsed = saved ? JSON.parse(saved) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.error("No pude cargar mc_leads desde localStorage:", error);
+      return [];
+    }
   });
 
   useEffect(() => {
@@ -57,8 +63,24 @@ function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("mc_leads", JSON.stringify(leads));
+    try {
+      localStorage.setItem("mc_leads", JSON.stringify(leads));
+    } catch (error) {
+      console.error("No pude guardar mc_leads en localStorage:", error);
+    }
   }, [leads]);
+
+  function persistLeads(nextLeads) {
+    try {
+      localStorage.setItem("mc_leads", JSON.stringify(nextLeads));
+      setLeads(nextLeads);
+      return true;
+    } catch (error) {
+      console.error("No pude guardar mc_leads en localStorage:", error);
+      alert("No pude guardar el lead en este dispositivo. Revisa el almacenamiento del navegador e intenta otra vez.");
+      return false;
+    }
+  }
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -410,25 +432,42 @@ function App() {
   }
 
   function saveLead() {
-    if (!form.company || !form.contact) {
-      alert("Pon por lo menos compania y contacto.");
+    const company = form.company.trim();
+    const contact = form.contact.trim();
+
+    if (!company && !contact) {
+      alert("Pon por lo menos compania o contacto.");
       return;
     }
 
+    const normalizedForm = {
+      ...form,
+      company: company || contact,
+      contact: contact || company,
+    };
+
     if (editingId) {
-      setLeads(leads.map((lead) => (lead.id === editingId ? { ...lead, ...form } : lead)));
-      clearForm();
+      const nextLeads = leads.map((lead) =>
+        lead.id === editingId ? { ...lead, ...normalizedForm } : lead
+      );
+
+      if (persistLeads(nextLeads)) {
+        clearForm();
+      }
       return;
     }
 
     const newLead = {
       id: Date.now(),
       createdAt: new Date().toLocaleDateString("es-US"),
-      ...form,
+      ...normalizedForm,
     };
 
-    setLeads([newLead, ...leads]);
-    clearForm();
+    const nextLeads = [newLead, ...leads];
+
+    if (persistLeads(nextLeads)) {
+      clearForm();
+    }
   }
 
   function editLead(lead) {
@@ -449,7 +488,7 @@ function App() {
 
   function deleteLead(id) {
     if (window.confirm("Seguro que quieres borrar este lead?")) {
-      setLeads(leads.filter((lead) => lead.id !== id));
+      persistLeads(leads.filter((lead) => lead.id !== id));
     }
   }
 
